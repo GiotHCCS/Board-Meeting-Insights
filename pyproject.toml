@@ -1,0 +1,29 @@
+[project]
+name = "bm-full-pipeline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "chromadb>=1.0.21",
+    "faster-whisper>=1.2.0",
+    "fuzzywuzzy>=0.18.0",
+    "google-api-python-client>=2.181.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.2",
+    "ollama>=0.5.3",
+    "pandas>=2.3.2",
+    "python-dateutil>=2.9.0.post0",
+    "python-dotenv>=1.1.1",
+    "python-levenshtein>=0.27.1",
+    "regex>=2025.9.1",
+    "requests>=2.32.5",
+    "sentence-transformers>=5.1.0",
+    "tqdm>=4.67.1",
+    "yt-dlp>=2025.9.5",
+]
+
+[tool.uv.workspace]
+members = [
+    "BM_Full_Pipeline",
+]
