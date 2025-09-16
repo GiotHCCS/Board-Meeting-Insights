@@ -90,8 +90,8 @@ cd C:\Projects
 uv init BM_Full_Pipeline
 cd BM_Full_Pipeline
 
-:: Install dependencies
-uv pip install \
+:: Add dependencies to pyproject.toml
+uv add \
     google-api-python-client \
     google-auth-oauthlib \
     google-auth-httplib2 \
@@ -100,9 +100,13 @@ uv pip install \
     requests \
     python-dotenv \
     ctranslate2 \
-    openai-whisper \
+    faster-whisper \
     chromadb \
-    numpy
+    numpy \
+    ollama
+
+:: Sync the environment with the lockfile
+uv sync
 ```
 After setup, copy your client_secret.json into the root. On first run, authenticate via browser; token.json will be saved.
 
