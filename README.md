@@ -31,7 +31,7 @@ On first run, a browser window opens for authentication. A `token.json` is store
 ---
 
 ## Project Layout
-
+```
 BM_Full_Pipeline/
 ├─ pyproject.toml # uv project manifest (name, deps, Python)
 ├─ uv.lock # uv lockfile (exact dependency versions)
@@ -75,7 +75,7 @@ BM_Full_Pipeline/
 ├─ temp_audio/ # transient .wav audio for ASR (auto-cleaned if enabled)
 │
 └─ chromadb_storage/ # persistent ChromaDB database (embeddings + metadata)
-
+```
 
 ---
 
