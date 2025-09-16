@@ -33,21 +33,48 @@ On first run, a browser window opens for authentication. A `token.json` is store
 ## Project Layout
 
 BM_Full_Pipeline/
-├── main.py # Orchestrates the full pipeline
-├── config.py # Central configuration (colleges, API, paths)
-├── src/
-│ ├── channel_discovery.py # Find the best YouTube channel for each school
-│ ├── video_fetcher.py # Collect videos & playlists (uploads + board mtgs)
-│ ├── captions.py # Download available captions with yt-dlp
-│ ├── transcription.py # Run Whisper ASR on videos without captions
-│ ├── processing.py # Clean & normalize transcript text
-│ ├── vector_store.py # Build and manage the transcript vector database
-│ └── command_center.py # Shared constants and configs
-├── data/ # CSV metadata (filtered videos, logs, mappings)
-├── captions/ # Downloaded VTT/SRT captions
-├── transcripts/ # Whisper-generated transcripts
-├── vectors/ # Persisted vector database
-└── client_secret.json # OAuth2 credentials (not tracked in Git)
+├─ pyproject.toml # uv project manifest (name, deps, Python)
+├─ uv.lock # uv lockfile (exact dependency versions)
+├─ .venv/ # local virtual environment created by uv
+│
+├─ main.py # pipeline entrypoint (steps 1→5 orchestration)
+├─ config.py # all knobs/paths/toggles for every step
+│
+├─ youtube_discovery.py # Step 1a: find official college YouTube channels
+├─ video_collection.py # Step 1b: collect candidate videos (uploads-first, playlists fallback)
+├─ caption_downloader.py # Step 1c: download existing captions via yt-dlp
+│
+├─ asr_processor.py # Step 2: Whisper (faster-whisper) ASR for no-caption videos
+│
+├─ transcript_cleaner.py # Step 3: VTT → clean(5-word lines) + pure(text) outputs
+│
+├─ vector_database.py # Step 4: build ChromaDB, chunking + metadata
+├─ rag_interface.py # Step 5: retrieval + generation (Ollama), prompts/citations
+│
+├─ verify_env.py # one-off environment sanity checks (CUDA, FFmpeg, models)
+│
+├─ client_secret.json # YouTube OAuth client (provided by user)
+├─ token.json # YouTube OAuth token cache (auto-created/refreshes)
+├─ .env # optional: local overrides (e.g., OLLAMA_HOST)
+│
+├─ data/ # pipeline CSV outputs and logs
+│ ├─ school_IDs.csv # chosen channel per college (discovery result)
+│ ├─ video_List.csv # kept video candidates with scores
+│ ├─ caption_Failed.csv # videos lacking captions (input to Step 2)
+│ ├─ asr_failed.csv # ASR failures (download or transcription issues)
+│ ├─ cleaning_failed.csv # Step 3 parse/clean issues
+│ └─ video_Rejected.csv # below-threshold or filtered-out candidates
+│
+├─ captions/ # transcripts by school (slugified)
+│ ├─ <school-slug>/
+│ │ ├─ raw/ # .vtt from YouTube or ASR (authoritative source)
+│ │ ├─ clean/ # .txt (5-word lines with timestamps)
+│ │ └─ pure/ # .txt (plain text for embedding)
+│ └─ ... # one folder per school
+│
+├─ temp_audio/ # transient .wav audio for ASR (auto-cleaned if enabled)
+│
+└─ chromadb_storage/ # persistent ChromaDB database (embeddings + metadata)
 
 
 ---
@@ -76,7 +103,7 @@ uv pip install \
     openai-whisper \
     chromadb \
     numpy
-
+```
 After setup, copy your client_secret.json into the root. On first run, authenticate via browser; token.json will be saved.
 
 ## Adding Colleges
