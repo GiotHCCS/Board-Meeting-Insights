@@ -26,6 +26,8 @@ from transcript_cleaner import process_all_transcripts
 from vector_database import create_vector_database
 from rag_interface import initialize_rag_system, interactive_chat
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 def initialize_project_structure() -> None:
     """Create necessary directories and CSV files on first run."""
     config.ensure_directories()

@@ -28,7 +28,10 @@ logger.setLevel(logging.INFO)
 
 # --------------------- helpers ---------------------
 def slugify(value: str) -> str:
-    return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", value)).strip("_").lower()
+    # normalize to dashed, lowercased slug
+    s = re.sub(r"[^A-Za-z0-9]+", "-", value).strip("-").lower()
+    return re.sub(r"-{2,}", "-", s)
+
 
 def _ensure_dirs():
     os.makedirs(config.CHROMADB_PERSIST_DIR, exist_ok=True)
@@ -160,51 +163,104 @@ def load_video_metadata() -> Dict[str, Dict]:
 # --------------- chunking ----------------
 _SENT_SPLIT = re.compile(r"(?<=[\.\?\!])\s+")
 def _split_sentences(text: str) -> List[str]:
-    # simple sentence split; your transcripts are mostly full stops
-    return [s.strip() for s in _SENT_SPLIT.split(text) if s.strip()]
+    """
+    Sentence-ish splitter:
+    - first split on blank-line paragraph breaks (common in your pure files),
+    - then split each paragraph by . ? ! boundaries,
+    - fall back to the whole paragraph if no punctuation exists.
+    """
+    if not text:
+        return []
+    # normalize newlines a bit
+    text = re.sub(r"\r\n?", "\n", text)
+    paras = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+
+    sents: List[str] = []
+    for p in paras:
+        parts = [s.strip() for s in _SENT_SPLIT.split(p) if s.strip()]
+        if parts:
+            sents.extend(parts)
+        else:
+            sents.append(p)  # no punctuation in this paragraph
+    return sents
 
 def _smart_chunks(text: str) -> List[str]:
+    """
+    Target ~CHUNK_SIZE chars with ~CHUNK_OVERLAP, preferring sentence/paragraph
+    boundaries. If a 'sentence' is longer than the target size (or there is no
+    punctuation at all), **fallback to fixed-size char windows** so we never
+    collapse to a single giant chunk.
+    """
     text = (text or "").strip()
     if not text:
         return []
-    size = int(getattr(config, "CHUNK_SIZE", 1000))
-    overlap = int(getattr(config, "CHUNK_OVERLAP", 200))
-    min_sz = int(getattr(config, "MIN_CHUNK_SIZE", 300))
-    max_sz = int(getattr(config, "MAX_CHUNK_SIZE", 2000))
+
+    size     = int(getattr(config, "CHUNK_SIZE", 1000))
+    overlap  = int(getattr(config, "CHUNK_OVERLAP", 200))
+    min_sz   = int(getattr(config, "MIN_CHUNK_SIZE", 300))
+    max_sz   = int(getattr(config, "MAX_CHUNK_SIZE", 2000))
     by_sents = bool(getattr(config, "CHUNK_BY_SENTENCES", True))
 
-    if not by_sents:
-        # pure char sliding window
+    def _char_window_split(t: str) -> List[str]:
         chunks = []
         i = 0
-        while i < len(text):
-            chunk = text[i:i+size]
-            if len(chunk) >= min_sz:
-                chunks.append(chunk)
-            i += max(1, size - overlap)
+        step = max(1, size - overlap)
+        while i < len(t):
+            chunk = t[i:i+size]
+            if len(chunk) >= min_sz or not chunks:
+                chunks.append(chunk[:max_sz])
+            i += step
         return chunks
 
+    if not by_sents:
+        return _char_window_split(text)
+
     sents = _split_sentences(text)
+
+    # If we basically have one monster “sentence” (no punctuation), fallback immediately.
+    if len(sents) <= 1 and len(text) > size:
+        return _char_window_split(text)
+
     chunks, cur, cur_len = [], [], 0
     for s in sents:
+        # If any single sentence is longer than target size, split it by char windows
+        if len(s) > size:
+            # flush current buffer
+            if cur:
+                blob = " ".join(cur)
+                if len(blob) >= min_sz:
+                    chunks.append(blob[:max_sz])
+                cur, cur_len = [], 0
+            # hard-split the long sentence
+            chunks.extend(_char_window_split(s))
+            continue
+
         if cur_len + len(s) + 1 <= size or cur_len == 0:
-            cur.append(s); cur_len += len(s) + 1
+            cur.append(s)
+            cur_len += len(s) + 1
         else:
             blob = " ".join(cur)
             if len(blob) >= min_sz:
                 chunks.append(blob[:max_sz])
-            # overlap by sentences approx via last N chars
-            if overlap > 0 and cur:
-                keep = " ".join(cur)[max(0, len(" ".join(cur)) - overlap):]
+            # overlap by characters from the end of the blob
+            if overlap > 0 and blob:
+                keep = blob[max(0, len(blob) - overlap):]
                 cur = [keep] if keep else []
                 cur_len = len(keep)
             else:
                 cur, cur_len = [], 0
-            cur.append(s); cur_len += len(s) + 1
+            cur.append(s)
+            cur_len += len(s) + 1
+
     if cur:
         blob = " ".join(cur)
         if len(blob) >= min_sz:
             chunks.append(blob[:max_sz])
+
+    # Last sanity fallback
+    if not chunks and text:
+        return _char_window_split(text)
+
     return chunks
 
 # --------------- clean correlation (timestamps) ---------------
